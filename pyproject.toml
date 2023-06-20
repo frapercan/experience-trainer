@@ -1,11 +1,18 @@
 [tool.poetry]
-name = "template"
+name ="experience_trainer"
 version = "0.1.0"
 description = ""
 authors = ["frapercan <frapercan1@alum.us.es>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+torch = "^2.0.1"
+pytorch-lightning = "^2.0.3"
+torchvision = "^0.15.2"
+webdataset = "^0.2.48"
+matplotlib = "^3.7.1"
+pillow = "^9.5.0"
+pyyaml = "^6.0"
 
 
 [tool.poetry.dev-dependencies]

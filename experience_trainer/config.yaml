@@ -1,0 +1,5 @@
+dataset_path: /home/xaxi/PycharmProjects/experience-recorder/experience_recorder/dataset.tar
+actions_map_path: /home/xaxi/PycharmProjects/experience-trainer/maps
+batch_size: 8
+num_workers: 4
+epochs: 1
