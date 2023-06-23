@@ -39,12 +39,14 @@ class CustomIterableDataset(IterableDataset):
             action = state['action']
             action_index = self.get_action_index(action)
             action_tensor = torch.tensor(action_index)
+
+            reward = torch.tensor(state['reward'])
+
             # Apply One-Hot Encoding to action
             action_one_hot = F.one_hot(action_tensor, num_classes=len(self.actions_mapping))
             if not self.reward:
-                yield image, action_one_hot
-            reward = torch.tensor(int(state['score']))
-            yield image, action_one_hot
+                yield image, action_one_hot, reward
+
 
     def get_action_index(self, action):
         # Define your logic to map action strings to indices
