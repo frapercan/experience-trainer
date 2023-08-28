@@ -1,9 +1,18 @@
-dataset_path: /home/xaxi/PycharmProjects/experience-recorder/experience_recorder/dataset.tar
+dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets.tar
+dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets.json
 actions_map_path: /home/xaxi/PycharmProjects/experience-trainer/maps
 model_save_path: /home/xaxi/PycharmProjects/experience-trainer/models/checkpoints
-batch_size: 32
-num_workers: 8
-epochs: 5000
-lr: 0.001
+batch_size: 64
+num_workers: 0
+epochs: 500
+lr: 0.0001
 
 log_dir: /home/xaxi/PycharmProjects/experience-trainer/experience_trainer/lightning_logs
+
+
+actions_mapping:
+  - 'Key.down'
+  - 'Key.up'
+  - 'Key.backspace'
+  - 'Key.right'
+  - 'Key.left'

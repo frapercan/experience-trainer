@@ -6,57 +6,72 @@ from torchvision.models import resnet18
 import torch.nn.functional as F
 
 
-class ResNet(pl.LightningModule):
+class ActorCritic(pl.LightningModule):
     def __init__(self, num_actions, learning_rate=0.001):
-        super(ResNet, self).__init__()
-
-
+        super(ActorCritic, self).__init__()
         self.learning_rate = learning_rate
-        # ResNet backbone
-        self.model = resnet18(pretrained=True)
-        num_features = self.model.fc.in_features
-        self.model.fc = nn.Identity()
+        resnet = resnet18(pretrained=True)
+        self.resnet = resnet
+        self.actor = nn.Sequential(
+            nn.Linear(1000, 512),
+            nn.ReLU(),
+            nn.BatchNorm1d(512),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Linear(128, 32),
+            nn.ReLU(),
+            nn.BatchNorm1d(32),
+            nn.Linear(32, num_actions),
+            nn.ReLU()
+        )
 
-        # Actor head
-        self.actor_fc = nn.Linear(num_features, num_actions)
-        self.actor_softmax = nn.Softmax(dim=1)
+        self.critic = nn.Sequential(
+            nn.Linear(1005, 512),
+            nn.ReLU(),
+            nn.BatchNorm1d(512),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Linear(128, 32),
+            nn.ReLU(),
+            nn.BatchNorm1d(32),
+            nn.Linear(32, 1),
+            nn.ReLU(),
+        )
 
-        # Critic head
-        self.critic_fc = nn.Linear(num_features, 1)
 
     def forward(self, x):
-        features = self.model(x)
-        features = features.view(features.size(0), -1)
-
-        # Actor forward pass
-        actor_output = self.actor_fc(features)
-        actor_output = self.actor_softmax(actor_output)
-
-        # Critic forward pass
-        critic_output = self.critic_fc(features)
-        return actor_output, critic_output
+        x = self.resnet(x)
+        x1 = self.actor(x)
+        x2 = self.critic(torch.cat([x,x1],dim=1))
+        return x1,x2
 
     def training_step(self, batch, batch_idx):
         states, actions, returns = batch
         actions = actions.float()  # Convert actions tensor to Float type
         returns = returns.float()  # Convert returns tensor to Float type
         returns = torch.unsqueeze(returns, dim=-1)
-        # Forward pass
         actor_output, critic_output = self.forward(states)
 
         # Compute actor and critic losses
-        actor_loss = torch.nn.CrossEntropyLoss()(actor_output, actions)
-        critic_loss = torch.nn.MSELoss()(critic_output, returns)
 
-        # Total loss
-        total_loss = torch.abs(actor_loss) + torch.abs(critic_loss)
+        actor_loss = torch.nn.MSELoss()(actions.float(), actor_output.float())
 
-        # Log the losses
-        self.log('actor_loss', actor_loss)
-        self.log('critic_loss', critic_loss)
-        self.log('total_loss', total_loss)
+        critic_loss = torch.nn.MSELoss()(returns, critic_output)
+        total_loss = actor_loss+critic_loss
+
+        # Return the losses as a dictionary
+
+        # # Log the losses
+        self.log('loss', total_loss,prog_bar=True)
+        self.log('actor_loss', actor_loss,prog_bar=True)
+        self.log('critic_loss', critic_loss,prog_bar=True)
+        # self.log('critic_loss', critic_loss)
+        # self.log('total_loss', total_loss)
         self.log('lr',self.learning_rate)
-        print(self.learning_rate)
+
+
         return total_loss
 
     def validation_step(self, batch, batch_idx):
@@ -67,59 +82,7 @@ class ResNet(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,10)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 100)
 
         return [optimizer], [scheduler]
 
-
-import torch
-import torch.nn as nn
-from torchvision.models import resnet18
-
-class ActorCriticModel(nn.Module):
-    def __init__(self, num_actions):
-        super(ActorCriticModel, self).__init__()
-
-
-
-    def forward(self, x):
-        features = self.model(x)
-        features = features.view(features.size(0), -1)
-
-        # Actor forward pass
-        actor_output = self.actor_fc(features)
-        actor_output = self.actor_softmax(actor_output)
-
-        # Critic forward pass
-        critic_output = self.critic_fc(features)
-
-        return actor_output, critic_output
-
-# class ResNet(pl.LightningModule):
-#     def __init__(self, num_actions, lr=0.001):
-#         super(ResNet, self).__init__()
-#         self.model = resnet18(pretrained=True)
-#         num_features = self.model.fc.in_features
-#         self.model.fc = nn.Linear(num_features, num_actions)
-#         self.lr = lr
-#         self.loss = torch.nn.MSELoss()
-#
-#     def forward(self, x):
-#         return self.model(x)
-#
-#     def training_step(self, batch, batch_idx):
-#         x, y = batch
-#         logits = self(x)
-#         y = y.float()
-#         loss = self.loss(logits, y)
-#         self.log('train_loss', loss, prog_bar=True)
-#         return loss
-#
-#     def validation_step(self, batch, batch_idx):
-#         x, y = batch
-#         logits = self(x)
-#         loss = self.loss(logits, y)
-#         self.log('val_loss', loss, prog_bar=True)
-#
-#     def configure_optimizers(self):
-#         return optim.Adam(self.model.parameters(), lr=self.lr)
