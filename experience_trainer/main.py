@@ -1,109 +1,95 @@
 import json
 import os
 import pickle
-import sys
-import time
 
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import yaml
-from pytorch_lightning.tuner import Tuner
-from torch.utils.data import DataLoader, random_split
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
+from experience_trainer.dataset.dataset import ExperienceDataset, ExperienceIterableDataset
+from experience_trainer.model.autoencoder_actions import ActionsAutoEncoder
+from experience_trainer.model.autoencoder_rewards import RewardsAutoEncoder
+from experience_trainer.model.model import ActorCriticModel
+from experience_trainer.model.video_autoencoder import VideoAutoEncoder
+from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.callbacks import LearningRateFinder
-from experience_trainer.dataset.dataset import CustomIterableDataset
-from experience_trainer.model.model import ActorCritic
-
+from pytorch_lightning.loggers import TensorBoardLogger
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter()
 
 if __name__ == "__main__":
-
-
     with open("config.yaml", 'r', encoding='utf-8') as conf:
-        conf = yaml.safe_load(conf)
+        config = yaml.safe_load(conf)
 
-        metadata_file =  open(conf['dataset_metadata'], "r")
-        metadata = json.load(metadata_file)
-        dataset_length = metadata['length']
+        with open(config['dataset_metadata'], "r") as metadata_file:
+            metadata = json.load(metadata_file)
 
-        dataset_path = conf['dataset_path']
+        with open(config['val_dataset_metadata'], "r") as metadata_file:
+            val_metadata = json.load(metadata_file)
 
-        actions_mapping = conf['actions_mapping']
-        custom_dataset = CustomIterableDataset(dataset_path,actions_mapping,dataset_length)
+        dataset_path = config['dataset_path']
+        dataset = ExperienceIterableDataset(dataset_path, config['actions_mapping'], metadata['length'])
 
-        for sample in custom_dataset:
-            pass
-        with open(os.path.join(conf['actions_map_path'], "map"), 'wb') as file:
-            pickle.dump(custom_dataset.actions_mapping, file)
+        val_dataset_path = config['val_dataset_path']
+        val_dataset = ExperienceIterableDataset(val_dataset_path, config['actions_mapping'], val_metadata['length'])
 
-        model = ActorCritic(num_actions=len(custom_dataset.actions_mapping), learning_rate=conf['lr'])
+        with open(os.path.join(config['actions_map_path'], "map"), 'wb') as file:
+            pickle.dump(dataset.actions_mapping, file)
 
-        # model.model
-        # Create TensorBoard logger
-        # logger = TensorBoardLogger(save_dir=conf['log_dir'], name='experiments',log_graph=True)
-        # logger._log_graph = True
-        # logger = TensorBoardLogger(save_dir=conf['log_dir'], name='experiments', log_graph=True)
-        # logger._log_graph = True
+        # Logger for TensorBoard
+        logger = TensorBoardLogger(save_dir=config['log_dir'], name='experiments', log_graph=True)
 
-        # Set the example_input_array attribute of the model
-        # model.example_input_array = torch.ones((1, 3, 256, 256))
-
-        # Alternatively, you can pass the input_array argument when calling log_graph
-        # logger.log_graph(model, input_array=torch.ones((1, 3, 256, 256)))
-        # Create a ModelCheckpoint callback to save the best model
+        # Checkpoint to save the best model
         checkpoint_callback = ModelCheckpoint(
-            dirpath=conf['model_save_path'],
+            dirpath=config['model_save_path'],
             filename='best_model',
             save_top_k=1,
-            monitor='loss',
+            monitor='val_loss',
             mode='min'
         )
-        learning_rate_finder = LearningRateFinder(min_lr=0.00003,max_lr=0.03,num_training_steps=1000)
-        # lr_monitor = LearningRateMonitor(logging_interval='step')
 
+        lr_monitor = LearningRateMonitor(logging_interval='step')
 
-
-        trainer = pl.Trainer(
-            max_epochs=conf['epochs'],
-            # logger=logger,  # Pass the TensorBoard logger to the trainer
-            callbacks=[checkpoint_callback],  # Pass the ModelCheckpoint callback to the trainer
-            log_every_n_steps=5,  # Log metrics every 100 steps
+        trainer = Trainer(
+            max_epochs=config['epochs'],
+            callbacks=[checkpoint_callback, lr_monitor],
+            log_every_n_steps=5,
         )
 
-        dataloader = DataLoader(custom_dataset, batch_size=conf['batch_size'], num_workers=conf['num_workers'])
+        dataloader = DataLoader(dataset, batch_size=config['batch_size'], num_workers=config['num_workers'])
+        val_dataloader = DataLoader(val_dataset, batch_size=config['val_batch_size'], num_workers=config['num_workers'])
 
-        # tuner.lr_find(model,dataloader)
-        # print(trainer.model.learning_rate)
+        video_autoencoder_model = VideoAutoEncoder(learning_rate=config['lr'],mode="encode")
+        trainer.fit(video_autoencoder_model, dataloader, val_dataloader)
 
+        actions_autoencoder_model = ActionsAutoEncoder(learning_rate=config['lr'],mode="encode")
+        trainer.fit(actions_autoencoder_model, dataloader, val_dataloader)
 
+        rewards_autoencoder_model = RewardsAutoEncoder(learning_rate=config['lr'],mode="encode")
+        trainer.fit(rewards_autoencoder_model, dataloader, val_dataloader)
 
-
-        trainer.fit(
-            model,
-            dataloader
-        )
-
+        # model = ActorCriticModel()
+        # trainer.fit(model, dataloader, val_dataloader)
 
         # Save the trained model
-        model_path = os.path.join(conf['model_save_path'], "model.pt")
-        torch.save(model.state_dict(), model_path)
-        print("Model saved successfully.")
+        # model_path = os.path.join(config['model_save_path'], "model-test.pt")
+        # torch.save(ae_model.state_dict(), model_path)
+        # print("Model saved successfully.")
+        #
+        # model = VideoAutoEncoder()
+        # checkpoint = torch.load('/home/xaxi/PycharmProjects/experience-trainer/models/checkpoints/model-test.pt')
+        # model.load_state_dict(checkpoint)
+        # model.eval()
 
-
-        model = ActorCritic(num_actions=5)
-        checkpoint = torch.load('/home/xaxi/PycharmProjects/experience-trainer/models/checkpoints/best_model-v70.ckpt')
-        model.load_state_dict(checkpoint['state_dict'])
-
-        i=0
-        for data in custom_dataset:
-            # print(data)
-            x,y,r = data
-            print(model(torch.unsqueeze(x, dim=0)))
-            print(y,r)
-            i+=1
-            if i == 100:
-                break
+        # with torch.no_grad():
+        #     for data in dataset:
+        #         backward_images, forward_images, actions, rewards = data
+        #         backward_images = backward_images.unsqueeze(0)
+        #         actions = actions.unsqueeze(0)
+        #         prediction = model([backward_images, forward_images, actions])
+        #         video_prediction = prediction.permute((0, 2, 1, 3, 4))
+        #
+        #
+        #         for frame in video_prediction[-1]:
+        #             plt.imshow(frame.permute(1, 2, 0).detach().numpy())
+        #             plt.show()
+        #             break

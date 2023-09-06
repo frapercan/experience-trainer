@@ -7,10 +7,18 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import IterableDataset, DataLoader, Dataset
 from torchvision import transforms
+from torchvision.transforms import ToPILImage
 from webdataset import WebDataset
 from PIL import Image
 import torch.nn.functional as F
 import torchvision.transforms as T
+
+
+def decode_pt(data):
+    """Decode a .pt tensor file from raw bytes."""
+    stream = io.BytesIO(data)
+    return torch.load(stream)
+
 
 def bytes_to_tensor(byte_data):
     """Load a tensor from its binary representation."""
@@ -22,55 +30,101 @@ def calculate_reward(scores):
     if len(scores) == 1:
         return -1
     reward = []
-    for i,score in enumerate(scores[:-1]):
-        if scores[i+1] == score:
+    for i, score in enumerate(scores[:-1]):
+        if scores[i + 1] == score:
             reward.append(-1)
         else:
             reward.append(1)
-    result = sum(reward)/(len(scores)-1)
+    result = sum(reward) / (len(scores) - 1)
     return result
 
 
-class CustomIterableDataset(IterableDataset):
-    def __init__(self,dataset_path,actions_mapping,dataset_length):
+class ExperienceIterableDataset(IterableDataset):
+    def __init__(self, dataset_path, actions_mapping, dataset_length):
         self.dataset_path = dataset_path
         self.actions_mapping = actions_mapping
         self.initialize_keys()
         self.dataset_length = dataset_length
 
-
-
     def initialize_keys(self):
         self.dataset = WebDataset(self.dataset_path)
-
 
     def __iter__(self):
         for sample in self.dataset:
             rolling = len([key for key in sample.keys() if 'backward' in key])
+            backward_image_bytes = sample[f'image_backward_0.pt']
 
-            backward_images = [sample[f"image_backward_{i}.png"] for i in range(rolling)]
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-            ])
+            backward_images = torch.stack(
+                [decode_pt(sample[f"image_backward_{i}.pt"]) for i in range(rolling)]).permute([1, 0, 2, 3])
+            forward_images = torch.stack([decode_pt(sample[f"image_onward_{i}.pt"]) for i in range(rolling)]).permute(
+                [1, 0, 2, 3])
 
-            image = Image.open(io.BytesIO(backward_images[-1]))
-            image_tensor = transform(image)
             state = json.loads(sample['json'].decode("utf-8"))
 
-            action = state['rolling_5_action_ahead'][0]
-            action_index = self.get_action_index(action)
-            action_tensor = torch.tensor(action_index)
-            reward = calculate_reward(state['rolling_5_score_ahead'])
-            
+            actions_previous = state['rolling_5_action_previous']
+            actions_previous_index = [self.get_action_index(action) for action in actions_previous]
+            actions_previous_tensor = torch.tensor(actions_previous_index)
+
+            actions_forward = state['rolling_5_action_ahead']
+            actions_forward_index = [self.get_action_index(action) for action in actions_forward]
+            actions_forward_tensor = torch.tensor(actions_forward_index)
 
             # Apply One-Hot Encoding to action
-            action_one_hot = F.one_hot(action_tensor, num_classes=len(self.actions_mapping))
-            yield image_tensor , action_one_hot , torch.tensor(reward).type(torch.FloatTensor)
+            action_one_hot_previous = F.one_hot(actions_previous_tensor, num_classes=len(self.actions_mapping)).type(
+                torch.FloatTensor)
+            action_one_hot_forward = F.one_hot(actions_forward_tensor, num_classes=len(self.actions_mapping)).type(
+                torch.FloatTensor)
+
+            reward_previous = [float(score) if score != 'None' else 0 for score in state['rolling_5_score_previous']]
+            reward_previous = torch.tensor(reward_previous)
+
+            min_val = torch.min(reward_previous)
+            max_val = torch.max(reward_previous)
+            normalized_reward_previous = torch.nan_to_num((reward_previous - min_val) / (max_val - min_val), 0)
+
+            reward_forward = [float(score) if score != 'None' else 0 for score in state['rolling_5_score_ahead']]
+            reward_forward = torch.tensor(reward_forward)
+
+            min_val = torch.min(reward_forward)
+            max_val = torch.max(reward_forward)
+            normalized_reward_forward = torch.nan_to_num((reward_forward - min_val) / (max_val - min_val), 0)
+
+            yield backward_images, forward_images, action_one_hot_previous, action_one_hot_forward, normalized_reward_previous, normalized_reward_forward
 
     def get_action_index(self, action):
-        # Define your logic to map action strings to indices
-        # For example, if you have a list of action strings ['action1', 'action2', 'action3']
-        # and you want to map them to indices [0, 1, 2], you can use the following code:
+        return self.actions_mapping.index(action)
+
+    def __len__(self):
+        return self.dataset_length
+
+
+class ExperienceDataset(Dataset):
+    def __init__(self, dataset_path, actions_mapping, dataset_length):
+        self.dataset_path = dataset_path
+        self.actions_mapping = actions_mapping
+        self.initialize_keys()
+        self.dataset_length = dataset_length
+
+    def initialize_keys(self):
+        self.dataset = list(WebDataset(self.dataset_path))
+
+    def __getitem__(self, index):
+        sample = self.dataset[index]
+        rolling = len([key for key in sample.keys() if 'backward' in key])
+        backward_images = torch.stack([decode_pt(sample[f"image_backward_{i}.pt"]) for i in range(rolling)]).permute(
+            [1, 0, 2, 3])
+        forward_images = torch.stack([decode_pt(sample[f"image_onward_{i}.pt"]) for i in range(rolling)]).permute(
+            [0, 1, 2, 3])
+        state = json.loads(sample['json'].decode("utf-8"))
+        action = state['rolling_5_action_ahead'][0]
+        action_index = self.get_action_index(action)
+        action_tensor = torch.tensor(action_index)
+        reward = calculate_reward(state['rolling_5_score_ahead'])
+        # Apply One-Hot Encoding to action
+        action_one_hot = F.one_hot(action_tensor, num_classes=len(self.actions_mapping))
+        return backward_images, forward_images, action_one_hot, torch.tensor(reward).type(torch.FloatTensor)
+
+    def get_action_index(self, action):
         return self.actions_mapping.index(action)
 
     def __len__(self):

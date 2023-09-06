@@ -1,18 +1,27 @@
-dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets.tar
-dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets.json
+dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-full.tar
+dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-full.json
+val_dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-val.tar
+val_dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-val.json
 actions_map_path: /home/xaxi/PycharmProjects/experience-trainer/maps
 model_save_path: /home/xaxi/PycharmProjects/experience-trainer/models/checkpoints
-batch_size: 64
-num_workers: 0
-epochs: 500
-lr: 0.0001
+
+batch_size: 32
+val_batch_size: 11
+num_workers: 12
+lr: 0.001
 
 log_dir: /home/xaxi/PycharmProjects/experience-trainer/experience_trainer/lightning_logs
 
 
+epochs_video: 200
+epochs_actions: 50
+epochs_rewards: 50
+epochs_actor_critic: 1000
+
 actions_mapping:
-  - 'Key.down'
-  - 'Key.up'
-  - 'Key.backspace'
-  - 'Key.right'
-  - 'Key.left'
+  - "Key.down"
+  - "Key.up"
+  - "Key.backspace"
+  - "Key.right"
+  - "Key.left"
+    
