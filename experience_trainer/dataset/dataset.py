@@ -27,16 +27,22 @@ def bytes_to_tensor(byte_data):
 
 
 def calculate_reward(scores):
-    if len(scores) == 1:
-        return -1
-    reward = []
-    for i, score in enumerate(scores[:-1]):
-        if scores[i + 1] == score:
-            reward.append(-1)
-        else:
-            reward.append(1)
-    result = sum(reward) / (len(scores) - 1)
-    return result
+    scores = torch.tensor([float(score) if score != 'None' else 0 for score in scores])
+    scores = torch.diff(scores)
+    min_val = scores.min()
+    max_val = scores.max()
+    scores = (scores - min_val) / (max_val - min_val)
+
+    weights = torch.linspace(len(scores), 1, len(scores))
+
+    reward = torch.sum(scores * weights) / torch.sum(weights)
+
+
+
+
+
+
+    return reward
 
 
 class ExperienceIterableDataset(IterableDataset):
@@ -78,18 +84,12 @@ class ExperienceIterableDataset(IterableDataset):
             reward_previous = [float(score) if score != 'None' else 0 for score in state['rolling_5_score_previous']]
             reward_previous = torch.tensor(reward_previous)
 
-            min_val = torch.min(reward_previous)
-            max_val = torch.max(reward_previous)
-            normalized_reward_previous = torch.nan_to_num((reward_previous - min_val) / (max_val - min_val), 0)
 
             reward_forward = [float(score) if score != 'None' else 0 for score in state['rolling_5_score_ahead']]
             reward_forward = torch.tensor(reward_forward)
 
-            min_val = torch.min(reward_forward)
-            max_val = torch.max(reward_forward)
-            normalized_reward_forward = torch.nan_to_num((reward_forward - min_val) / (max_val - min_val), 0)
-
-            yield backward_images, forward_images, action_one_hot_previous, action_one_hot_forward, normalized_reward_previous, normalized_reward_forward
+            reward = calculate_reward([state['rolling_5_score_previous'][-1]]+state['rolling_5_score_ahead'])
+            yield backward_images.squeeze(), action_one_hot_forward[0], reward
 
     def get_action_index(self, action):
         return self.actions_mapping.index(action)

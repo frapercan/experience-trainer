@@ -28,34 +28,14 @@ class VideoAutoEncoder(pl.LightningModule):
         self.learning_rate = learning_rate
 
         # Encoder Bock
-        self.conv1 = nn.Conv3d(3, 2, kernel_size=(3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1))
-        self.batch_norm1 = nn.BatchNorm3d(num_features=2)
-        self.conv2 = nn.Conv3d(2, 1, kernel_size=(3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1))
-        self.batch_norm2 = nn.BatchNorm3d(num_features=1)
+        self.conv1 = nn.Conv2d(3, 2, kernel_size=113)
+        self.batch_norm1 = nn.BatchNorm2d(2)
 
-        self.conv3 = nn.Conv2d(5, 3, kernel_size=1)
-        self.batch_norm3 = nn.BatchNorm2d(num_features=3)
+        self.conv2 = nn.Conv2d(2, 1, kernel_size=57)
+        self.batch_norm1 = nn.BatchNorm2d(1)
 
-        self.conv4 = nn.Conv2d(3, 1, kernel_size=1)
-        self.batch_norm4 = nn.BatchNorm2d(num_features=1)
-
-        # BottleNeck
         self.latent = nn.Identity()
 
-        # Decoder Block
-        self.deconv1 = nn.ConvTranspose2d(1, 3, kernel_size=1)
-        self.batch_norm5 = nn.BatchNorm2d(num_features=3)
-
-        self.deconv2 = nn.ConvTranspose2d(3, 5, kernel_size=1)
-        self.batch_norm6 = nn.BatchNorm2d(num_features=5)
-
-        self.deconv3 = nn.ConvTranspose3d(1, 2, kernel_size=(3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1),
-                                          output_padding=(0, 1, 1))
-        self.batch_norm7 = nn.BatchNorm3d(num_features=2)
-
-        self.deconv4 = nn.ConvTranspose3d(2, 3, kernel_size=(3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1),
-                                          output_padding=(0, 1, 1))
-        self.batch_norm8 = nn.BatchNorm3d(num_features=3)
         self.relu = nn.ReLU()
 
         if mode == 'decode':
@@ -64,22 +44,23 @@ class VideoAutoEncoder(pl.LightningModule):
             self.freeze_encoder_weights(False)
 
     def freeze_encoder_weights(self, value):
-        for param in self.conv1.parameters():
-            param.requires_grad = not value
-        for param in self.batch_norm1.parameters():
-            param.requires_grad = not value
-        for param in self.conv2.parameters():
-            param.requires_grad = not value
-        for param in self.batch_norm2.parameters():
-            param.requires_grad = not value
-        for param in self.conv3.parameters():
-            param.requires_grad = not value
-        for param in self.batch_norm3.parameters():
-            param.requires_grad = not value
-        for param in self.conv4.parameters():
-            param.requires_grad = not value
-        for param in self.batch_norm4.parameters():
-            param.requires_grad = not value
+        pass
+        # for param in self.conv1.parameters():
+        #     param.requires_grad = not value
+        # for param in self.batch_norm1.parameters():
+        #     param.requires_grad = not value
+        # for param in self.conv2.parameters():
+        #     param.requires_grad = not value
+        # for param in self.batch_norm2.parameters():
+        #     param.requires_grad = not value
+        # for param in self.conv3.parameters():
+        #     param.requires_grad = not value
+        # for param in self.batch_norm3.parameters():
+        #     param.requires_grad = not value
+        # for param in self.conv4.parameters():
+        #     param.requires_grad = not value
+        # for param in self.batch_norm4.parameters():
+        #     param.requires_grad = not value
 
         def configure_optimizers(self):
             optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -90,6 +71,8 @@ class VideoAutoEncoder(pl.LightningModule):
             return optimizer
 
     def forward(self, x):
+        x = x.squeeze()
+
         x = self.conv1(x)
         x = self.batch_norm1(x)
         x = self.relu(x)
@@ -98,40 +81,15 @@ class VideoAutoEncoder(pl.LightningModule):
         x = self.batch_norm2(x)
         x = self.relu(x)
 
-        x = x.squeeze(1)
-
-        x = self.conv3(x)
-        x = self.batch_norm3(x)
-        x = self.relu(x)
-
-        x = self.conv4(x)
-        x = self.batch_norm4(x)
-        x = self.relu(x)
-
         latent = self.latent(x)
 
 
-        x = self.deconv1(x)
-        x = self.batch_norm5(x)
-        x = self.relu(x)
 
-        x = self.deconv2(x)
-        x = self.batch_norm6(x)
-        x = self.relu(x)
-
-        x = x.unsqueeze(1)
-
-        x = self.deconv3(x)
-        x = self.batch_norm7(x)
-        x = self.relu(x)
-
-        x = self.deconv4(x)
-        x = self.batch_norm8(x)
-        x = self.relu(x)
-        if self.mode == 'encode':
-            return x
-        if self.mode == 'decode':
-            return latent
+        #
+        # if self.mode == 'encode':
+        #     return x
+        # if self.mode == 'decode':
+        #     return latent
 
 
     def training_step(self, batch, batch_idx):

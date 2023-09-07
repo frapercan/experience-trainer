@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from experience_trainer.dataset.dataset import ExperienceIterableDataset
 from experience_trainer.model.autoencoder_actions import ActionsAutoEncoder
 from experience_trainer.model.autoencoder_rewards import RewardsAutoEncoder
-from experience_trainer.model.model import ActorCriticModel
+from experience_trainer.model.model import ActorCriticModel, ActorCritic
 from experience_trainer.model.video_autoencoder import VideoAutoEncoder
 
 # Configurar logging
@@ -38,8 +38,9 @@ class ExperienceTrainer:
 
         backward_images, forward_images, action_one_hot_previous, action_one_hot_forward, normalized_reward_previous, normalized_reward_forward = sample
         inputs = (
-        backward_images, forward_images, action_one_hot_previous, action_one_hot_forward, normalized_reward_previous,
-        normalized_reward_forward)
+            backward_images, forward_images, action_one_hot_previous, action_one_hot_forward,
+            normalized_reward_previous,
+            normalized_reward_forward)
 
         tb_writer = SummaryWriter(log_dir=os.path.join(self.config['log_dir'], model.__class__.__name__))
         tb_writer.add_graph(model, inputs)
@@ -78,7 +79,7 @@ class ExperienceTrainer:
             dirpath=checkpoint_dir,
             filename=model_class.__name__,
             save_top_k=1,
-            monitor='val_loss',
+            monitor='loss',
             mode='min'
         )
 
@@ -111,7 +112,7 @@ class ExperienceTrainer:
 
         return best_checkpoint
 
-    def train_model(self, model_class,epochs, *args, **kwargs):
+    def train_model(self, model_class, epochs, *args, **kwargs):
         logger.info(f"Training model: {model_class.__name__}...")
         self.trainer = Trainer(
             max_epochs=epochs,
@@ -125,26 +126,21 @@ class ExperienceTrainer:
         if best_checkpoint:
             checkpoint = torch.load(best_checkpoint)
             model.load_state_dict(checkpoint['state_dict'])
-
-        if model_class == ActorCriticModel:
-            checkpointVideoAutoEncoder =   torch.load(self.load_best_checkpoint(VideoAutoEncoder))
-            checkpointActionsAutoEncoder = torch.load(self.load_best_checkpoint(ActionsAutoEncoder))
-            checkpointRewardsAutoEncoder = torch.load(self.load_best_checkpoint(RewardsAutoEncoder))
-            model.video_autoencoder.load_state_dict(checkpointVideoAutoEncoder['state_dict'])
-            model.action_autoencoder.load_state_dict(checkpointActionsAutoEncoder['state_dict'])
-            model.rewards_autoencoder.load_state_dict(checkpointRewardsAutoEncoder['state_dict'])
+        #
+        # if model_class == ActorCriticModel:
+        #     checkpointVideoAutoEncoder =   torch.load(self.load_best_checkpoint(VideoAutoEncoder))
+        #     checkpointActionsAutoEncoder = torch.load(self.load_best_checkpoint(ActionsAutoEncoder))
+        #     checkpointRewardsAutoEncoder = torch.load(self.load_best_checkpoint(RewardsAutoEncoder))
+        #     model.video_autoencoder.load_state_dict(checkpointVideoAutoEncoder['state_dict'])
+        #     model.action_autoencoder.load_state_dict(checkpointActionsAutoEncoder['state_dict'])
+        #     model.rewards_autoencoder.load_state_dict(checkpointRewardsAutoEncoder['state_dict'])
 
         self.trainer.fit(model, self.dataloader, self.val_dataloader)
         # self.log_graph_to_tensorboard(model)
-
 
 
 if __name__ == "__main__":
     with open("config.yaml", 'r', encoding='utf-8') as conf:
         config = yaml.safe_load(conf)
     handler = ExperienceTrainer(config)
-    handler.train_model(VideoAutoEncoder,epochs=config['epochs_video'], mode="encode")
-    handler.train_model(ActionsAutoEncoder,epochs=config['epochs_actions'], mode="encode")
-    handler.train_model(RewardsAutoEncoder,epochs=config['epochs_rewards'], mode="encode")
-
-    handler.train_model(ActorCriticModel,epochs=config['epochs_actor_critic'])
+    handler.train_model(ActorCritic, num_actions=5, epochs=config['epochs_actor_critic'])

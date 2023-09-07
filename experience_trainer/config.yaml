@@ -16,7 +16,7 @@ log_dir: /home/xaxi/PycharmProjects/experience-trainer/experience_trainer/lightn
 epochs_video: 200
 epochs_actions: 50
 epochs_rewards: 50
-epochs_actor_critic: 1000
+epochs_actor_critic: 100
 
 actions_mapping:
   - "Key.down"
