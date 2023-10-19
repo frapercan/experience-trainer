@@ -1,98 +1,52 @@
-import io
-import json
+import math
 import time
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import IterableDataset, DataLoader, Dataset
+from torch.utils.data import Dataset
 from torchvision import transforms
-from torchvision.transforms import ToPILImage
+from torch.utils.data import IterableDataset
 from webdataset import WebDataset
-from PIL import Image
+import io
+import json
 import torch.nn.functional as F
-import torchvision.transforms as T
-
-
-def decode_pt(data):
-    """Decode a .pt tensor file from raw bytes."""
-    stream = io.BytesIO(data)
-    return torch.load(stream)
-
-
-def bytes_to_tensor(byte_data):
-    """Load a tensor from its binary representation."""
-    buffer = io.BytesIO(byte_data)
-    return torch.load(buffer)
-
-
-def calculate_reward(scores):
-    scores = torch.tensor([float(score) if score != 'None' else 0 for score in scores])
-    scores = torch.diff(scores)
-    min_val = scores.min()
-    max_val = scores.max()
-    scores = (scores - min_val) / (max_val - min_val)
-
-    weights = torch.linspace(len(scores), 1, len(scores))
-
-    reward = torch.sum(scores * weights) / torch.sum(weights)
-
-
-
-
-
-
-    return reward
+from PIL import Image
+import torch
 
 
 class ExperienceIterableDataset(IterableDataset):
-    def __init__(self, dataset_path, actions_mapping, dataset_length):
+    def __init__(self, dataset_path, actions_mapping, dataset_length, shuffle=True, shuffle_buffer_size=10000):
         self.dataset_path = dataset_path
         self.actions_mapping = actions_mapping
+        self.shuffle = shuffle
+        self.shuffle_buffer_size = shuffle_buffer_size
         self.initialize_keys()
         self.dataset_length = dataset_length
 
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor()
+        ])
+
     def initialize_keys(self):
         self.dataset = WebDataset(self.dataset_path)
+        if self.shuffle:
+            self.dataset = self.dataset.shuffle(self.shuffle_buffer_size)
 
     def __iter__(self):
         for sample in self.dataset:
-            rolling = len([key for key in sample.keys() if 'backward' in key])
-            backward_image_bytes = sample[f'image_backward_0.pt']
-
-            backward_images = torch.stack(
-                [decode_pt(sample[f"image_backward_{i}.pt"]) for i in range(rolling)]).permute([1, 0, 2, 3])
-            forward_images = torch.stack([decode_pt(sample[f"image_onward_{i}.pt"]) for i in range(rolling)]).permute(
-                [1, 0, 2, 3])
-
+            image = self.transform(Image.open(io.BytesIO(sample['image.png'])))
             state = json.loads(sample['json'].decode("utf-8"))
-
-            actions_previous = state['rolling_5_action_previous']
-            actions_previous_index = [self.get_action_index(action) for action in actions_previous]
-            actions_previous_tensor = torch.tensor(actions_previous_index)
-
-            actions_forward = state['rolling_5_action_ahead']
-            actions_forward_index = [self.get_action_index(action) for action in actions_forward]
-            actions_forward_tensor = torch.tensor(actions_forward_index)
-
-            # Apply One-Hot Encoding to action
-            action_one_hot_previous = F.one_hot(actions_previous_tensor, num_classes=len(self.actions_mapping)).type(
-                torch.FloatTensor)
-            action_one_hot_forward = F.one_hot(actions_forward_tensor, num_classes=len(self.actions_mapping)).type(
+            action = F.one_hot(self.get_action_index(state['action']), num_classes=len(self.actions_mapping)).type(
                 torch.FloatTensor)
 
-            reward_previous = [float(score) if score != 'None' else 0 for score in state['rolling_5_score_previous']]
-            reward_previous = torch.tensor(reward_previous)
+            score_ahead = state['rolling_5_score_ahead']
+            score_ahead = [float(score) if score != "None" else 0 for score in score_ahead]
+            score_ahead = torch.tensor(score_ahead)
 
-
-            reward_forward = [float(score) if score != 'None' else 0 for score in state['rolling_5_score_ahead']]
-            reward_forward = torch.tensor(reward_forward)
-
-            reward = calculate_reward([state['rolling_5_score_previous'][-1]]+state['rolling_5_score_ahead'])
-            yield backward_images.squeeze(), action_one_hot_forward[0], reward
+            reward = calculate_reward(score_ahead)
+            yield image, action, reward
 
     def get_action_index(self, action):
-        return self.actions_mapping.index(action)
+        return torch.tensor(self.actions_mapping.index(action))
 
     def __len__(self):
         return self.dataset_length
@@ -129,3 +83,21 @@ class ExperienceDataset(Dataset):
 
     def __len__(self):
         return self.dataset_length
+
+
+def decode_pt(data):
+    """Decode a .pt tensor file from raw bytes."""
+    stream = io.BytesIO(data)
+    return torch.load(stream)
+
+
+def bytes_to_tensor(byte_data):
+    """Load a tensor from its binary representation."""
+    buffer = io.BytesIO(byte_data)
+    return torch.load(buffer)
+
+
+def calculate_reward(scores):
+    differences = torch.abs(torch.diff(scores))
+
+    return torch.tensor(float(1)) if differences[0] > 0 else torch.tensor(float(0))

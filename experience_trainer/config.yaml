@@ -1,27 +1,37 @@
-dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-full.tar
-dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-full.json
+
+shuffle: True
+shuffle_buffer_size: 10000
+
+dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-val.tar
+dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-val.json
+
+validation: False
 val_dataset_path: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-val.tar
 val_dataset_metadata: /home/xaxi/PycharmProjects/experience-modeler/experience_modeler/datasets-val.json
-actions_map_path: /home/xaxi/PycharmProjects/experience-trainer/maps
-model_save_path: /home/xaxi/PycharmProjects/experience-trainer/models/checkpoints
+
+checkpoint_callback: True
+checkpoint_metric: actor_loss
+checkpoint_mode: min
+save_top_k: 2
+checkpoints_path: /home/xaxi/PycharmProjects/experience-trainer/models/checkpoints
+load_checkpoint: True
+
+
+early_stopping_callback: True
+early_stopping_patience: 100
+early_stopping_metric: train_acc_epoch
+early_stopping_mode: max
 
 batch_size: 32
-val_batch_size: 11
+val_batch_size: 32
 num_workers: 12
 lr: 0.001
+epochs: 1
+
+CosineAnnealingLR: True
+CosineAnnealingLR_steps: 100
 
 log_dir: /home/xaxi/PycharmProjects/experience-trainer/experience_trainer/lightning_logs
 
 
-epochs_video: 200
-epochs_actions: 50
-epochs_rewards: 50
-epochs_actor_critic: 100
 
-actions_mapping:
-  - "Key.down"
-  - "Key.up"
-  - "Key.backspace"
-  - "Key.right"
-  - "Key.left"
-    
